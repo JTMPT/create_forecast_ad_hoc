@@ -71,8 +71,7 @@ def change_Muni_Heb_to_Muni_Eng(software_data_folder_location, forecast):
     muni_heb_mapping = muni_english.set_index('Muni_Heb')
 
     forecast = forecast.merge(muni_heb_mapping, how='left', left_on='Muni_Heb', right_index=True)
-    forecast.dropna(subset=['Muni_Heb'], inplace=True)
-
+    forecast['Muni_Eng'] = forecast['Muni_Eng'].fillna('Unknown')
     return forecast
 
 def find_files_with_pattern(folder_path, pattern):
