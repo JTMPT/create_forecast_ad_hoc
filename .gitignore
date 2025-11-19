@@ -161,7 +161,10 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-create_forecast_basic/arab_and_palestinian/Intermediates
+create_forecast_basic/arab_and_palestinian/Intermediates 
 create_forecast_basic/current/Intermediates
 create_forecast_basic/current/Monitoring
 
+create_forecast_basic/arab_and_palestinian/Intermediates/README.md
+create_forecast_basic/current/Intermediates/README.md
+create_forecast_basic/current/Monitoring/README.md
