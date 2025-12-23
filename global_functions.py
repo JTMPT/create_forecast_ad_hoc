@@ -1,4 +1,9 @@
 import os
+import re
+import shutil
+from pathlib import Path
+from typing import Iterable, List, Tuple, Union
+
 import fiona
 import geopandas as gpd
 import pandas as pd
@@ -101,3 +106,80 @@ def find_geographic_layers(folder_path, pattern, suffix):
         for file in os.listdir(folder_path) 
         if pattern in file and file.endswith(suffix)
     ]
+
+
+def archive_old_outputs(
+    base_dir: str | Path,
+    scenarios: Iterable[str],
+    extensions: Tuple[str, ...] = (".xlsx",),
+    archive_subdir: str = "OLD",
+    dry_run: bool = False,
+    name_contains: str | Iterable[str] | None = None,
+    match_basename_pattern: Union[str, Path, None] = None,
+) -> List[tuple[Path, Path]]:
+    """
+    Move files with the given extensions from each scenario folder into its OLD subfolder.
+
+    base_dir: root folder that contains per-scenario subfolders (e.g., outputs/JTMT).
+    scenarios: iterable of scenario folder names (e.g., ['jtmt', 'iplan', 'bau']).
+    extensions: file extensions to archive (case-insensitive). Defaults to Excel.
+    archive_subdir: name of the archive folder to move into. Defaults to 'OLD'.
+    dry_run: if True, only report planned moves without moving files.
+    name_contains: optional substring or list of substrings that must appear in the
+        filename to be archived (case-insensitive). If omitted, all matching extensions
+        will be archived.
+    match_basename_pattern: optional reference filename; when provided, only files whose
+        basename matches the reference after replacing digits with # (case-insensitive)
+        will be archived. This allows archiving only prior dated versions of the same
+        file (e.g., current name with another date).
+
+    Returns a list of (src, dest) paths that were (or would be) moved.
+    """
+    moved: List[tuple[Path, Path]] = []
+    base = Path(base_dir)
+    extensions_lower = {ext.lower() for ext in extensions}
+    name_filters = None
+    if name_contains is not None:
+        if isinstance(name_contains, str):
+            name_filters = [name_contains.lower()]
+        else:
+            name_filters = [token.lower() for token in name_contains]
+    canonical_ref = None
+    if match_basename_pattern:
+        ref_name = Path(match_basename_pattern).name.lower()
+        canonical_ref = re.sub(r"\d", "#", ref_name)
+
+    for scenario in scenarios:
+        source_dir = base / scenario
+        target_dir = source_dir / archive_subdir
+
+        if not source_dir.exists():
+            print(f"[skip] missing scenario dir: {source_dir}")
+            continue
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        for item in source_dir.iterdir():
+            if not item.is_file():
+                continue
+            if item.suffix.lower() not in extensions_lower:
+                continue
+            if name_filters:
+                lowered_name = item.name.lower()
+                if not any(token in lowered_name for token in name_filters):
+                    continue
+            if canonical_ref is not None:
+                candidate_canonical = re.sub(r"\d", "#", item.name.lower())
+                if candidate_canonical != canonical_ref:
+                    continue
+
+            dest = target_dir / item.name
+            moved.append((item, dest))
+
+            if dry_run:
+                print(f"[dry-run] would move {item} -> {dest}")
+            else:
+                shutil.move(item, dest)
+                print(f"[moved] {item} -> {dest}")
+
+    return moved
