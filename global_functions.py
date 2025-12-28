@@ -174,12 +174,18 @@ def archive_old_outputs(
                     continue
 
             dest = target_dir / item.name
-            moved.append((item, dest))
 
             if dry_run:
                 print(f"[dry-run] would move {item} -> {dest}")
+                moved.append((item, dest))  # הועבר לכאן כדי שיקרה רק אם לא נכשל
             else:
-                shutil.move(item, dest)
-                print(f"[moved] {item} -> {dest}")
+                try:
+                    shutil.move(str(item), str(dest))
+                    print(f"[moved] {item} -> {dest}")
+                    moved.append((item, dest))  # קורה רק אם ההזזה הצליחה
+                except PermissionError:
+                    print(f"[WARNING] Could not move {item.name} because it is in use. Skipping.")
+                except Exception as e:
+                    print(f"[ERROR] Failed to move {item.name}: {e}")
 
     return moved
