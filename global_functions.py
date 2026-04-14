@@ -34,6 +34,7 @@ def up_load_df(folder_path,file_name):
     return df
 
 def split_index_by_taz(index,taz,min_prec,col_name_to_split):
+    
     index['index_area']=index.area
     
     taz['taz_area']=taz.area
@@ -58,8 +59,18 @@ def split_index_by_taz(index,taz,min_prec,col_name_to_split):
     index=pd.merge(index.reset_index(),index_taz,on='id')
 
     for c in col_name_to_split:
+       # Debugging: check if the column contains non-numeric data
+        if not pd.api.types.is_numeric_dtype(index[c]):
+            print(f"\n--- DATA WARNING: Column '{c}' contains non-numeric values ---")
+            bad_mask = pd.to_numeric(index[c], errors='coerce').isna() & index[c].notna()
+            if bad_mask.any():
+                print(f"Found non-numeric text in '{c}' for the following rows:")
+                print(index.loc[bad_mask, ['id', 'Taz_num', c]])
+            else:
+                print(f"Column '{c}' type is {index[c].dtype}")
+            print("-" * 60)
+
         index['{}'.format(c)]=index['{}'.format(c)]*(index['precent_from_big_index']/index['new_big'])
-        
         
     return index
 
