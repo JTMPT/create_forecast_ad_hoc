@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\advas\\\\Documents\\\\create_forecast_ad_hoc\" -Recurse -Filter \"*.ipynb\")",
+      "Bash(Select-Object FullName)",
+      "Bash(git checkout *)"
+    ]
+  }
+}
