@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import zipfile
 from pathlib import Path
 from typing import Iterable, List, Tuple, Union
 
@@ -58,6 +59,8 @@ def split_index_by_taz(index,taz,min_prec,col_name_to_split):
 
     index=pd.merge(index.reset_index(),index_taz,on='id')
 
+    index['share_used']=index['precent_from_big_index']/index['new_big']
+
     for c in col_name_to_split:
        # Debugging: check if the column contains non-numeric data
         if not pd.api.types.is_numeric_dtype(index[c]):
@@ -70,8 +73,9 @@ def split_index_by_taz(index,taz,min_prec,col_name_to_split):
                 print(f"Column '{c}' type is {index[c].dtype}")
             print("-" * 60)
 
-        index['{}'.format(c)]=index['{}'.format(c)]*(index['precent_from_big_index']/index['new_big'])
-        
+        index['{}_before_split'.format(c)]=index[c]
+        index['{}'.format(c)]=index['{}'.format(c)]*index['share_used']
+
     return index
 
 
@@ -200,3 +204,32 @@ def archive_old_outputs(
                     print(f"[ERROR] Failed to move {item.name}: {e}")
 
     return moved
+
+
+def zip_shapefiles(
+    shp_paths: Iterable[Union[str, Path]],
+    zip_path: Union[str, Path],
+    extensions: Tuple[str, ...] = (".shp", ".dbf", ".shx", ".cpg", ".prj"),
+) -> Path:
+    """
+    Zip one or more shapefiles (each identified by its .shp path) together with their
+    sidecar files (.dbf, .shx, .cpg, .prj, ...) into a single zip archive.
+
+    shp_paths: paths to the .shp files to include.
+    zip_path: destination path of the zip archive.
+    extensions: sidecar extensions to look for alongside each .shp file.
+
+    Returns the zip_path.
+    """
+    zip_path = Path(zip_path)
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for shp_path in shp_paths:
+            shp_path = Path(shp_path)
+            for ext in extensions:
+                sidecar = shp_path.with_suffix(ext)
+                if sidecar.exists():
+                    zf.write(sidecar, arcname=sidecar.name)
+
+    return zip_path
