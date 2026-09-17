@@ -4,7 +4,7 @@ fiona
 geopandas
 ipykernel
 jupyter
-pandas
+pandas<3
 papermill
 ipython
 openpyxl
