@@ -26,7 +26,7 @@ _FRAME_RE = re.compile(r'^File (.+?):(\d+), in ([^\s(]+)', re.MULTILINE)
 
 
 # שורת התקדמות, לדוגמה: "[10:02:15]   ▶ fix_cbs_data_230717.ipynb"
-_PROGRESS_RE = re.compile(r'^\[\d\d:\d\d:\d\d\] +[▶✔✖] ')
+_PROGRESS_RE = re.compile(r'^\[\d\d:\d\d:\d\d\] +[▶✔✖⏭] ')
 
 
 def _strip_ansi(text):
@@ -40,7 +40,7 @@ def _format_duration(seconds):
 
 
 def _print_progress(symbol, notebook_name, start_time=None):
-    # ▶ = התחלה, ✔ = סיום מוצלח, ✖ = כישלון. בסיום/כישלון מוצג גם משך הריצה
+    # ▶ = התחלה, ✔ = סיום מוצלח, ✖ = כישלון, ⏭ = דילוג. בסיום/כישלון מוצג גם משך הריצה
     line = '[{}] {} {}'.format(time.strftime('%H:%M:%S'), symbol, notebook_name)
     if start_time is not None:
         line += ' ({})'.format(_format_duration(time.time() - start_time))
@@ -145,16 +145,22 @@ def run_notebook(notebook_path, params):
     return True
 
 
-def run_step(notebook_file):
+def run_step(notebook_file, skip_if_exists=None):
     """
     מריצה מחברת באמצעות %run (באותו kernel ועם אותם משתנים, בדיוק כמו %run רגיל).
     אם המחברת נכשלת - זורקת NotebookRunError עם שם המחברת, הפונקציה שבה קרתה השגיאה וה-traceback.
 
     notebook_file: נתיב למחברת, לדוגמה "./emp_current_year.ipynb".
+    skip_if_exists: נתיב לקובץ שהמחברת יוצרת. אם הוא כבר קיים - מדלגים על המחברת ומשתמשים בקובץ הקיים.
     """
     from IPython import get_ipython
 
     notebook_name = os.path.basename(notebook_file)
+
+    if skip_if_exists is not None and os.path.exists(skip_if_exists):
+        _print_progress('⏭', '{} - משתמש בקובץ הקיים {}'.format(notebook_name, skip_if_exists))
+        return
+
     start_time = time.time()
     _print_progress('▶', notebook_name)
     try:
