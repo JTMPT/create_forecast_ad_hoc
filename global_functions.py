@@ -8,6 +8,7 @@ from typing import Iterable, List, Tuple, Union
 import fiona
 import geopandas as gpd
 import pandas as pd
+import pyogrio
 
 def up_load_gdb(path, layer_name):
     path='{}'.format(path)
@@ -121,6 +122,59 @@ def find_geographic_layers(folder_path, pattern, suffix):
         for file in os.listdir(folder_path) 
         if pattern in file and file.endswith(suffix)
     ]
+
+
+class LayerValidationError(Exception):
+    """שכבת אזורי התנועה שמועברת לשרשרת (new_layer_path) לא תקינה."""
+    pass
+
+
+# שדות שהמחברות בשרשרת קוראות ישירות מהשכבה:
+# Taz_num, main_secto - from_sa_cbs_to_ta_jtmt, prepare_students, students_current_year, palestinian_from_demo_230622, 230709_arab_growth_vs_kibolt
+# Muni_Heb - students_current_year
+REQUIRED_LAYER_FIELDS = ['Taz_num', 'main_secto', 'Muni_Heb']
+
+# קבצי ה-shapefile שחייבים להיות ליד ה-.shp, ומה קורה בלעדיהם
+REQUIRED_LAYER_FILES = {
+    '.shx': 'קובץ האינדקס של הגאומטריה - בלעדיו השכבה לא נקראת',
+    '.dbf': 'קובץ הטבלה - בלעדיו השכבה נקראת בלי שדות, והשגיאה מופיעה רק בהמשך הריצה',
+    '.prj': 'מערכת הקואורדינטות - בלעדיו חיתוכים מרחביים עם שכבות אחרות עלולים לתת תוצאות שגויות',
+}
+
+
+def validate_layer(layer_path, required_fields=REQUIRED_LAYER_FIELDS):
+    """
+    בודקת שהשכבה תקינה לפני שמתחילים את השרשרת, כדי לעצור תוך שניות ולא באמצע ריצה ארוכה:
+    שכל קבצי ה-shapefile קיימים, שהשכבה נקראת, שיש בה את השדות הנדרשים ושהיא לא ריקה.
+    אם משהו לא תקין - זורקת LayerValidationError עם כל הבעיות שנמצאו.
+    """
+    layer_base, _ = os.path.splitext(layer_path)
+    problems = []
+
+    for extension, explanation in REQUIRED_LAYER_FILES.items():
+        if not os.path.exists(layer_base + extension):
+            problems.append('חסר קובץ: {} ({})'.format(os.path.basename(layer_base + extension), explanation))
+
+    # את השדות בודקים רק כשכל הקבצים קיימים - אחרת רשימת השדות לא אמינה
+    if not problems:
+        try:
+            # read_info קוראת רק את מבנה השכבה (שדות ומספר פוליגונים), בלי לטעון את הגאומטריה
+            layer_info = pyogrio.read_info(layer_path)
+        except Exception as e:
+            problems.append('לא ניתן לקרוא את השכבה: {}: {}'.format(type(e).__name__, e))
+        else:
+            layer_fields = list(layer_info['fields'])
+            missing_fields = [field for field in required_fields if field not in layer_fields]
+            if missing_fields:
+                problems.append('חסרים שדות: {}'.format(', '.join(missing_fields)))
+                problems.append('שדות קיימים: {}'.format(', '.join(layer_fields)))
+            if layer_info['features'] == 0:
+                problems.append('השכבה ריקה (0 פוליגונים)')
+
+    if problems:
+        raise LayerValidationError('{}\n{}'.format(layer_path, '\n'.join(problems)))
+
+    print('✔ השכבה תקינה: {}'.format(os.path.basename(layer_path)))
 
 
 def archive_old_outputs(
