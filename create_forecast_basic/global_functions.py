@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 import os
 import re
 import shutil
@@ -304,3 +305,31 @@ def compare_scenarios(sum_df,col_index):
     sum_df=sum_df.loc[ ~(sum_df == 0).all(axis=1),:]
     
     return sum_df
+
+
+# קובץ הפרמטרים של הריצה האחרונה של main - מאפשר להריץ ידנית כל מחברת בשרשרת עם אותה שכבה ואותה תיקייה
+LAST_RUN_PARAMS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'last_run_params.json')
+
+
+def save_last_run_params(params):
+    """שומרת את הפרמטרים שמועברים לשרשרת (new_layer_path, output_folder_path). נקראת מ-main לפני הריצה."""
+    data = dict(params, saved_at=datetime.now().strftime('%Y-%m-%d %H:%M'))
+    with open(LAST_RUN_PARAMS_PATH, 'w', encoding='utf-8') as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
+
+
+def load_last_run_params():
+    """
+    טוענת את הפרמטרים של הריצה האחרונה של main, כדי להריץ ידנית מחברת מהשרשרת.
+    מחזירה (new_layer_path, output_folder_path).
+    """
+    if not os.path.exists(LAST_RUN_PARAMS_PATH):
+        raise FileNotFoundError('{} לא קיים - צריך להריץ את main לפחות פעם אחת לפני הרצה ידנית של מחברת מהשרשרת'.format(LAST_RUN_PARAMS_PATH))
+
+    with open(LAST_RUN_PARAMS_PATH, encoding='utf-8') as file:
+        data = json.load(file)
+
+    print('הרצה ידנית - פרמטרים מהריצה של main ב-{}:'.format(data['saved_at']))
+    print('new_layer_path = {}'.format(data['new_layer_path']))
+    print('output_folder_path = {}'.format(data['output_folder_path']))
+    return data['new_layer_path'], data['output_folder_path']

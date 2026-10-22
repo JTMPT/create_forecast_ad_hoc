@@ -168,3 +168,6 @@ create_forecast_basic/current/Monitoring
 create_forecast_basic/arab_and_palestinian/Intermediates/README.md
 create_forecast_basic/current/Intermediates/README.md
 create_forecast_basic/current/Monitoring/README.md
+
+# פרמטרים של הריצה האחרונה של main (מקומי לכל מחשב) - להרצה ידנית של מחברות מהשרשרת
+create_forecast_basic/last_run_params.json
