@@ -5,7 +5,7 @@
 DataFrame ריק = הבקרה עברה.
 
 שימוש:
-    summary, details = run_all_checks(final_df, base_df=base_proj)
+    summary, details = run_all_checks(final_df, base_df=base_proj, new_taz=new_taz, base_year_df=forecast_2020_full)
     save_checks_report(summary, details, path)
     raise_if_errors(summary)
 """
@@ -28,12 +28,37 @@ REQUIRED_COLS = ['TAZ', 'yosh', 'in_jerusalem_metropolin', 'jerusalem_city', 'se
 # עמודות קוד/סיווג - לא כמויות, לכן לא נבדקות בבקרת "שורה של אפסים"
 CODE_COLS = ['TAZ', 'yosh', 'in_jerusalem_metropolin', 'jerusalem_city', 'slope', 'urban']
 
+# עמודות סיווג שאסור שישתנו לאזור תנועה קיים
+CATEGORY_COLS = ['yosh', 'in_jerusalem_metropolin', 'jerusalem_city', 'sector', 'urban', 'slope']
+
+# שמות העמודות בקובץ המצב הקיים (2020) -> השמות שלהן בתוצר
+BASE_YEAR_COLS = {'Taz_num': 'TAZ', 'yosh': 'yosh', 'jeru_metro': 'in_jerusalem_metropolin',
+                  'jerusalem_': 'jerusalem_city', 'main_secto': 'sector', 'Urban': 'urban', 'slope': 'slope',
+                  'pop': 'pop', 'hh': 'hh_total', 'total_emp': 'emp_tot'}
+
 # בשורות פלסטיניות אין פירוק גילאים ו-hh_total, לכן הן מוחרגות מבקרות האוכלוסייה
 EXCLUDED_SECTORS = ['Palestinian']
 
 
 def _without_excluded_sectors(df):
     return df[~df['sector'].isin(EXCLUDED_SECTORS)]
+
+
+def _base_year_in_output_names(base_year_df):
+    return base_year_df[list(BASE_YEAR_COLS)].rename(columns=BASE_YEAR_COLS)
+
+
+def _changed_columns(df, ref_df, cols):
+    # משווה שורות עם אותו TAZ ומחזיר TAZ + העמודות שהשתנו. TAZ שקיים רק באחד מהם לא נבדק
+    df = df.set_index('TAZ')[cols]
+    ref = ref_df.set_index('TAZ')[cols]
+    common_taz = ref.index.intersection(df.index)
+    df, ref = df.loc[common_taz], ref.loc[common_taz]
+
+    changed = (df != ref) & ~(df.isna() & ref.isna())
+    changed = changed[changed.any(axis=1)]
+    return pd.DataFrame({'TAZ': changed.index,
+                         'changed_columns': [', '.join(row.index[row]) for _, row in changed.iterrows()]})
 
 
 # ---------------------------------------------------------------- בקרות מבנה
@@ -100,19 +125,47 @@ def check_taz_missing_vs_base(df, base_df):
     return base_df.loc[~base_df['TAZ'].isin(df['TAZ']), ['TAZ', 'sector']]
 
 
+def check_row_count_vs_base(df, base_df):
+    if len(df) >= len(base_df):
+        return pd.DataFrame()
+    return pd.DataFrame({'rows': [len(df)], 'rows_base': [len(base_df)]})
+
+
 def check_unchanged_vs_base(df, base_df, new_taz):
     # אזורי תנועה שלא בתחזית החדשה צריכים להגיע כמו שהם מקובץ הבסיס
-    cols = [c for c in REQUIRED_COLS if c != 'TAZ']
-    old = df[~df['TAZ'].isin(new_taz)].set_index('TAZ')[cols]
-    base = base_df.set_index('TAZ')[cols]
     # TAZ שחסר בתוצר נתפס ב-taz_missing_vs_base
-    common_taz = base.index.intersection(old.index)
-    old, base = old.loc[common_taz], base.loc[common_taz]
+    cols = [c for c in REQUIRED_COLS if c != 'TAZ']
+    return _changed_columns(df[~df['TAZ'].isin(new_taz)], base_df, cols)
 
-    changed = (old != base) & ~(old.isna() & base.isna())
-    changed = changed[changed.any(axis=1)]
-    return pd.DataFrame({'TAZ': changed.index,
-                         'changed_columns': [', '.join(row.index[row]) for _, row in changed.iterrows()]})
+
+def check_categorical_new_taz(df, base_df, new_taz, base_year_df=None):
+    # TAZ מהתחזית שקיים בקובץ הבסיס - מושווה אליו.
+    # TAZ חדש שלא בבסיס - מושווה לקובץ 2020 של אותה ריצה (באד-הוק הוא כבר כולל את שכבת ה-TAZ החדשה)
+    new = df[df['TAZ'].isin(new_taz)]
+    in_base = new['TAZ'].isin(base_df['TAZ'])
+    result = _changed_columns(new[in_base], base_df, CATEGORY_COLS).assign(compared_to='base')
+    if base_year_df is not None:
+        vs_2020 = _changed_columns(new[~in_base], _base_year_in_output_names(base_year_df),
+                                   CATEGORY_COLS).assign(compared_to='2020')
+        result = pd.concat([result, vs_2020], ignore_index=True)
+    return result
+
+
+# ---------------------------------------------------------------- השוואה לקובץ המצב הקיים (2020)
+
+def check_pop_kept_vs_base_year(df, base_year_df, min_pop=1):
+    # min_pop - בקובץ 2020 האוכלוסייה לא שלמה, ערכים זעירים הם שארית חישוב
+    base_year = _base_year_in_output_names(base_year_df)[['TAZ', 'pop']].rename(columns={'pop': 'pop_2020'})
+    merged = df[['TAZ', 'sector', 'pop']].merge(base_year, on='TAZ')
+    return merged[(merged['pop_2020'] >= min_pop) & (merged['pop'] == 0)]
+
+
+def check_totals_vs_base_year(df, base_year_df):
+    # בתוצר אין עמודת יח"ד - hh_total מול hh של 2020 משמש כמדד ליחידות הדיור
+    base_year = _base_year_in_output_names(base_year_df)
+    totals = pd.DataFrame([{'column': c, 'total_2020': base_year[c].sum(), 'total': df[c].sum()}
+                           for c in ['pop', 'hh_total', 'emp_tot']])
+    return totals[totals['total'] < totals['total_2020']]
 
 
 # ---------------------------------------------------------------- רישום הבקרות
@@ -132,7 +185,7 @@ CHECKS = [
 ]
 
 
-def run_all_checks(df, base_df=None, new_taz=None):
+def run_all_checks(df, base_df=None, new_taz=None, base_year_df=None):
     """
     מריץ את כל הבקרות על התוצר.
 
@@ -140,6 +193,7 @@ def run_all_checks(df, base_df=None, new_taz=None):
         df: התוצר הסופי
         base_df: קובץ הבסיס (BaseProjections) - להשוואה
         new_taz: רשימת אזורי התנועה מהתחזית החדשה - לבקרות שרלוונטיות רק להם
+        base_year_df: קובץ המצב הקיים המלא (2020_jtmt_forcast_full), בשמות העמודות המקוריים שלו
 
     Returns:
         summary (DataFrame): שורה לכל בקרה - סטטוס, מספר שורות שנכשלו ודוגמת TAZ
@@ -147,14 +201,23 @@ def run_all_checks(df, base_df=None, new_taz=None):
     """
     checks = list(CHECKS)
     if base_df is not None:
-        checks.append(('taz_missing_vs_base', ERROR, 'כל ה-TAZ שבקובץ הבסיס קיימים בתוצר',
+        checks.append(('taz_missing_vs_base', WARNING, 'כל ה-TAZ שבקובץ הבסיס קיימים בתוצר',
                        lambda d: check_taz_missing_vs_base(d, base_df)))
+        checks.append(('row_count_vs_base', WARNING, 'מספר השורות בתוצר לא קטן ממספר השורות בקובץ הבסיס',
+                       lambda d: check_row_count_vs_base(d, base_df)))
     if new_taz is not None:
         checks.append(('all_zero_row', WARNING, 'אין TAZ חדש שכל הערכים הכמותיים בו אפס',
                        lambda d: check_all_zero_row(d, new_taz)))
     if base_df is not None and new_taz is not None:
         checks.append(('unchanged_vs_base', ERROR, 'TAZ שלא בתחזית החדשה זהים לקובץ הבסיס',
                        lambda d: check_unchanged_vs_base(d, base_df, new_taz)))
+        checks.append(('categorical_new_taz', ERROR, 'עמודות הסיווג של TAZ בתחזית לא השתנו',
+                       lambda d: check_categorical_new_taz(d, base_df, new_taz, base_year_df)))
+    if base_year_df is not None:
+        checks.append(('pop_kept_vs_2020', WARNING, 'TAZ שהייתה בו אוכלוסייה ב-2020 נשאר עם אוכלוסייה',
+                       lambda d: check_pop_kept_vs_base_year(d, base_year_df)))
+        checks.append(('totals_vs_2020', ERROR, 'סך האוכלוסייה, משקי הבית והמועסקים לא ירד מ-2020',
+                       lambda d: check_totals_vs_base_year(d, base_year_df)))
 
     summary_rows = []
     details = {}
