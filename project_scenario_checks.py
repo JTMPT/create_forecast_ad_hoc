@@ -5,7 +5,8 @@
 DataFrame ריק = הבקרה עברה.
 
 שימוש:
-    summary, details = run_all_checks(final_df, base_df=base_proj, new_taz=new_taz, base_year_df=forecast_2020_full)
+    summary, details = run_all_checks(final_df, base_df=base_proj, new_taz=new_taz,
+                                      base_year_df=forecast_2020_full, approval_df=forecast)
     save_checks_report(summary, details, path)
     raise_if_errors(summary)
 """
@@ -168,6 +169,17 @@ def check_totals_vs_base_year(df, base_year_df):
     return totals[totals['total'] < totals['total_2020']]
 
 
+# ---------------------------------------------------------------- בקרות על קובץ for approval
+# רצות על forecast המלא מ-main (לא רק על העמודות שנכנסות לקובץ), אחרי שינוי Taz_num ל-TAZ
+
+EDU_EMP_COLS = ['emp_from_student', 'emp_from_Yeshiva_student', 'emp_from_uni_student']
+
+
+def check_emp_education_equals_sum(approval_df, tolerance=0.01):
+    df = approval_df.assign(emp_sum_diff=(approval_df['emp_Education'] - approval_df[EDU_EMP_COLS].sum(axis=1)).abs())
+    return df.loc[df['emp_sum_diff'] > tolerance, ['TAZ', 'emp_Education', 'emp_sum_diff']]
+
+
 # ---------------------------------------------------------------- רישום הבקרות
 
 # (שם, חומרה, תיאור, פונקציה) - להוספת בקרה: לכתוב פונקציה ולהוסיף שורה כאן
@@ -185,7 +197,7 @@ CHECKS = [
 ]
 
 
-def run_all_checks(df, base_df=None, new_taz=None, base_year_df=None):
+def run_all_checks(df, base_df=None, new_taz=None, base_year_df=None, approval_df=None):
     """
     מריץ את כל הבקרות על התוצר.
 
@@ -194,6 +206,7 @@ def run_all_checks(df, base_df=None, new_taz=None, base_year_df=None):
         base_df: קובץ הבסיס (BaseProjections) - להשוואה
         new_taz: רשימת אזורי התנועה מהתחזית החדשה - לבקרות שרלוונטיות רק להם
         base_year_df: קובץ המצב הקיים המלא (2020_jtmt_forcast_full), בשמות העמודות המקוריים שלו
+        approval_df: forecast מ-main - לבקרות על קובץ ה-for approval
 
     Returns:
         summary (DataFrame): שורה לכל בקרה - סטטוס, מספר שורות שנכשלו ודוגמת TAZ
@@ -218,6 +231,11 @@ def run_all_checks(df, base_df=None, new_taz=None, base_year_df=None):
                        lambda d: check_pop_kept_vs_base_year(d, base_year_df)))
         checks.append(('totals_vs_2020', ERROR, 'סך האוכלוסייה, משקי הבית והמועסקים לא ירד מ-2020',
                        lambda d: check_totals_vs_base_year(d, base_year_df)))
+    if approval_df is not None:
+        # רצה על approval_df ולא על התוצר
+        checks.append(('emp_education_equals_sum', WARNING,
+                       'for approval: מועסקים בחינוך שווה לסכום המועסקים מתלמידים, מתלמידי ישיבה ומסטודנטים',
+                       lambda d: check_emp_education_equals_sum(approval_df)))
 
     summary_rows = []
     details = {}
