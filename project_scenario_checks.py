@@ -30,7 +30,7 @@ REQUIRED_COLS = ['TAZ', 'yosh', 'in_jerusalem_metropolin', 'jerusalem_city', 'se
 CODE_COLS = ['TAZ', 'yosh', 'in_jerusalem_metropolin', 'jerusalem_city', 'slope', 'urban']
 
 # עמודות סיווג שאסור שישתנו לאזור תנועה קיים
-CATEGORY_COLS = ['yosh', 'in_jerusalem_metropolin', 'jerusalem_city', 'sector', 'urban', 'slope']
+CATEGORY_COLS = ['yosh', 'in_jerusalem_metropolin', 'jerusalem_city', 'urban', 'slope']
 
 # שמות העמודות בקובץ המצב הקיים (2020) -> השמות שלהן בתוצר
 BASE_YEAR_COLS = {'Taz_num': 'TAZ', 'yosh': 'yosh', 'jeru_metro': 'in_jerusalem_metropolin',
